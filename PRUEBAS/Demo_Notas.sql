@@ -1,120 +1,126 @@
-/*
-USE Creacion;
-GO
 
-/* =========================================================
-   BLOQUE 1 - RESET DEL ESCENARIO DE NOTAS
-   Idea: dejar al alumno Juan inscripto en SQL-01 en estado EN CURSO
-   y sin ninguna evaluacion cargada, para poder repetir la demo.
-   ========================================================= */
+-- REGISTRAR NOTA: Registra dos evaluaciones aprobadas usando el SP
+  
+USE BD2_TPI_G26;
 
-DECLARE @IdAlumno        int,
-        @IdCurso         int,
-        @IdEstadoEnCurso int;
+DECLARE 
+    @IdUsuarioAlumno2 int,
+    @IdCursoSQL2      int,
+    @IdClaseSelect    int,
+    @IdClaseWhere     int;
 
--- Me guardo el Id del alumno de pruebas
-SELECT @IdAlumno = IdUsuario
-FROM Usuario
+SELECT @IdUsuarioAlumno2 = IdUsuario
+FROM dbo.Usuario
 WHERE Email = 'juan.perez@example.com';
 
--- Me guardo el Id del curso de pruebas
-SELECT @IdCurso = IdCurso
-FROM Curso
+SELECT @IdCursoSQL2 = IdCurso
+FROM dbo.Curso
 WHERE Codigo = 'SQL-01';
 
--- Busco el estado "EN CURSO" para las inscripciones
-SELECT @IdEstadoEnCurso = IdEstado
-FROM Estado
-WHERE Tipo = 'INSCRIPCION'
-  AND Situacion = 'EN CURSO';
+SELECT @IdClaseSelect = c.IdClase
+FROM dbo.Clase c
+JOIN dbo.Modulo m ON m.IdModulo = c.IdModulo
+WHERE m.IdCurso = @IdCursoSQL2
+  AND c.Titulo = 'Consultas SELECT basicas';
 
--- Borro todas las evaluaciones de este alumno en este curso
-DELETE FROM Evaluacion
-WHERE IdUsuario = @IdAlumno
-  AND IdClase IN (
-        SELECT c.IdClase
-        FROM Clase c
-        JOIN Modulo m ON c.IdModulo = m.IdModulo
-        WHERE m.IdCurso = @IdCurso
-  );
+SELECT @IdClaseWhere = c.IdClase
+FROM dbo.Clase c
+JOIN dbo.Modulo m ON m.IdModulo = c.IdModulo
+WHERE m.IdCurso = @IdCursoSQL2
+  AND c.Titulo = 'Filtros con WHERE';
 
--- Vuelvo la inscripcion al estado EN CURSO
-UPDATE Inscripcion
-SET IdEstado = @IdEstadoEnCurso
-WHERE IdUsuario = @IdAlumno
-  AND IdCurso   = @IdCurso;
-
--- Chequeo rapido como quedo la inscripcion
-SELECT * 
-FROM Inscripcion
-WHERE IdUsuario = @IdAlumno
-  AND IdCurso   = @IdCurso;
-GO
-
-*/
-
-
-USE Creacion;
-GO
-
-
-/* =========================================================
-   BLOQUE 2 - CARGA DE EVALUACIONES USANDO EL SP
-   Aca llamo al SP_RegistrarCalificacionEvaluacion para dos clases.
-   La idea es mostrar que toda la logica pasa por el SP y no se inserta
-   directo en la tabla Evaluacion.
-   ========================================================= */
-
-DECLARE @IdAlumno2      int,
-        @IdClaseSelect  int,
-        @IdClaseWhere   int;
-
--- Id del mismo alumno de pruebas
-SELECT @IdAlumno2 = IdUsuario
-FROM Usuario
-WHERE Email = 'juan.perez@example.com';
-
--- Id de la clase "Consultas SELECT basicas"
-SELECT @IdClaseSelect = IdClase
-FROM Clase
-WHERE Titulo = 'Consultas SELECT basicas';
-
--- Id de la clase "Filtros con WHERE"
-SELECT @IdClaseWhere = IdClase
-FROM Clase
-WHERE Titulo = 'Filtros con WHERE';
-
--- Primera evaluacion (SELECT basicas)
 EXEC dbo.SP_RegistrarCalificacionEvaluacion
-    @IdUsuario         = @IdAlumno2,
+    @IdUsuario         = @IdUsuarioAlumno2,
     @IdClase           = @IdClaseSelect,
     @PuntajeObtenido   = 8,
-    @TiempoEmpleadoMin = 25,
-    @Observaciones     = 'Primera evaluacion';
+    @TiempoEmpleadoMin = 30,
+    @Observaciones     = 'Evaluacion 1 - demo';
 
--- Segunda evaluacion (WHERE)
 EXEC dbo.SP_RegistrarCalificacionEvaluacion
-    @IdUsuario         = @IdAlumno2,
+    @IdUsuario         = @IdUsuarioAlumno2,
     @IdClase           = @IdClaseWhere,
     @PuntajeObtenido   = 9,
-    @TiempoEmpleadoMin = 30,
-    @Observaciones     = 'Segunda evaluacion';
-GO
+    @TiempoEmpleadoMin = 40,
+    @Observaciones     = 'Evaluacion 2 - demo';
+
+SELECT 
+    e.IdEvaluacion,
+    e.IdUsuario,
+    e.IdClase,
+    e.PuntajeObtenido,
+    e.PuntajeAprob,
+    e.Aprobado,
+    e.EstadoEvaluacion
+FROM dbo.Evaluacion e
+WHERE e.IdUsuario = @IdUsuarioAlumno2
+  AND e.IdClase IN (@IdClaseSelect, @IdClaseWhere);
 
 
-USE Creacion;
-GO
 
-/* =========================================================
-   BLOQUE 3 - VER RESULTADOS
-   Aca muestro:
-   - como quedaron las filas en Evaluacion,
-   - como el trigger actualizo el estado de la Inscripcion,
-   - y el reporte final de VW_NotasCursoAlumno con el curso aprobado.
-   Este bloque es el que voy a usar en el video para explicar la logica.
-   ========================================================= */
+-- BLOQUE 3 - EFECTO DEL TRIGGER + VISTA: Ver inscripcion actualizada a APROBADO y reporte en la vista
 
-SELECT * FROM Evaluacion;
-SELECT * FROM Inscripcion;
-SELECT * FROM VW_NotasCursoAlumno;
-GO
+/*
+
+USE BD2_TPI_G26;
+
+DECLARE 
+    @IdUsuarioAlumno3 int,
+    @IdCursoSQL3      int;
+
+SELECT @IdUsuarioAlumno3 = IdUsuario
+FROM dbo.Usuario
+WHERE Email = 'juan.perez@example.com';
+
+SELECT @IdCursoSQL3 = IdCurso
+FROM dbo.Curso
+WHERE Codigo = 'SQL-01';
+
+SELECT 
+    i.IdInscripcion,
+    i.IdUsuario,
+    i.IdCurso,
+    e.Situacion AS EstadoInscripcion
+FROM dbo.Inscripcion i
+JOIN dbo.Estado e ON e.IdEstado = i.IdEstado
+WHERE i.IdUsuario = @IdUsuarioAlumno3
+  AND i.IdCurso   = @IdCursoSQL3;
+
+
+SELECT *
+FROM dbo.VW_NotasCursoAlumno
+WHERE IdUsuario = @IdUsuarioAlumno3
+  AND IdCurso   = @IdCursoSQL3;
+
+
+/*
+
+USE BD2_TPI_G26;
+
+DECLARE 
+    @IdUsuarioAlumno4 int,
+    @IdCursoSQL4      int,
+    @IdClaseSelect4   int;
+
+SELECT @IdUsuarioAlumno4 = IdUsuario
+FROM dbo.Usuario
+WHERE Email = 'juan.perez@example.com';
+
+SELECT @IdCursoSQL4 = IdCurso
+FROM dbo.Curso
+WHERE Codigo = 'SQL-01';
+
+SELECT @IdClaseSelect4 = c.IdClase
+FROM dbo.Clase c
+JOIN dbo.Modulo m ON m.IdModulo = c.IdModulo
+WHERE m.IdCurso = @IdCursoSQL4
+  AND c.Titulo  = 'Consultas SELECT basicas';
+
+EXEC dbo.SP_RegistrarCalificacionEvaluacion
+    @IdUsuario         = @IdUsuarioAlumno4,
+    @IdClase           = @IdClaseSelect4,
+    @PuntajeObtenido   = 10,
+    @TiempoEmpleadoMin = 20,
+    @Observaciones     = 'Intento repetido para demo';
+
+
+*/
