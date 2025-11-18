@@ -74,3 +74,15 @@ GROUP BY
     u.IdUsuario, u.Nombre, u.Apellido,
     c.IdCurso, c.Titulo;
 GO
+
+CREATE VIEW VW_GestionPagos
+AS
+SELECT usr.Nombre, usr.Apellido, usr.Email, ins.FechaInscripcion, ins.Bloqueado, p.Monto, p.Moneda, p.FechaPago, p.CuotaNumero, p.TotalCuotas, est_insc.Situacion as EstadoInscripcion,
+est_pago.Situacion as EstadoPago, cur.Codigo
+FROM dbo.Inscripcion as ins
+INNER JOIN dbo.Usuario  as usr      on ins.IdUsuario = usr.IdUsuario
+INNER JOIN dbo.Estado   as est_insc on ins.IdEstado = est_insc.IdEstado
+INNER JOIN dbo.Pago     as p        on ins.IdInscripcion = p.IdInscripcion
+INNER JOIN dbo.Estado   as est_pago on p.IdEstado = est_pago.IdEstado
+INNER JOIN dbo.Curso    as cur      on ins.IdCurso = cur.IdCurso
+GO

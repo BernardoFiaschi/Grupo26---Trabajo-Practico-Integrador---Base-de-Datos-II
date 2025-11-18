@@ -1,7 +1,7 @@
 USE BD2_TPI_G26;
 GO
 
--- SP que registra la nota de una evaluación de clase.
+-- SP que registra la nota de una evaluaciï¿½n de clase.
 -- Aplica validaciones de negocio y solo permite un intento por alumno y clase.
 
 IF OBJECT_ID('dbo.SP_RegistrarCalificacionEvaluacion', 'P') IS NOT NULL
@@ -29,7 +29,7 @@ BEGIN
         @Aprobado         bit,
         @EstadoEvaluacion varchar(20);
 
-    -- Valido que el usuario exista y esté activo
+    -- Valido que el usuario exista y estï¿½ activo
     IF NOT EXISTS (
         SELECT 1
         FROM dbo.Usuario
@@ -65,7 +65,7 @@ BEGIN
     FROM dbo.Modulo
     WHERE IdModulo = @IdModulo;
 
-    -- Valido que el alumno tenga una inscripción activa a ese curso
+    -- Valido que el alumno tenga una inscripciï¿½n activa a ese curso
     IF NOT EXISTS (
         SELECT 1
         FROM dbo.Inscripcion i
@@ -88,7 +88,7 @@ BEGIN
     BEGIN TRY
         BEGIN TRAN;
 
-        -- Verifico si ya hay una evaluación para ese alumno y esa clase
+        -- Verifico si ya hay una evaluaciï¿½n para ese alumno y esa clase
         SELECT
             @IdEvaluacion = IdEvaluacion,
             @PuntajeAprob = PuntajeAprob
@@ -110,11 +110,11 @@ BEGIN
         IF @PuntajeAprob IS NULL
             SET @PuntajeAprob = 6;  -- valor por defecto si no hay configurado
 
-        -- Calculo si aprueba y el estado de la evaluación
+        -- Calculo si aprueba y el estado de la evaluaciï¿½n
         SET @Aprobado = CASE WHEN @PuntajeObtenido >= @PuntajeAprob THEN 1 ELSE 0 END;
         SET @EstadoEvaluacion = CASE WHEN @Aprobado = 1 THEN 'APROBADA' ELSE 'REPROBADA' END;
 
-        -- Inserto la evaluación
+        -- Inserto la evaluaciï¿½n
         INSERT INTO dbo.Evaluacion (
             IdUsuario,
             IdClase,
@@ -154,7 +154,7 @@ BEGIN
 
         COMMIT TRAN;
 
-        -- Devuelvo un resumen de lo que se grabó
+        -- Devuelvo un resumen de lo que se grabï¿½
         SELECT
             e.IdEvaluacion,
             e.IdUsuario,
@@ -185,4 +185,90 @@ BEGIN
         RAISERROR(@ErrorMessage, @ErrorSeverity, @ErrorState);
     END CATCH;
 END;
+GO
+
+CREATE PROCEDURE SP_CANCELARINSCRIPCION (
+    @IdUsuario INT,
+    @Codigo VARCHAR(30),
+    @Motivo VARCHAR(500) = null
+)
+AS
+BEGIN
+    BEGIN TRY
+        BEGIN TRANSACTION
+
+        IF @IdUsuario IS NULL
+        BEGIN
+            RAISERROR('El IdUsuario ingresado no existe. Por consecuente no se borro nada.', 16, 1);
+            ROLLBACK TRANSACTION;
+            RETURN; 
+        END
+
+        IF @Codigo IS NULL
+        BEGIN
+            RAISERROR('El codigo de la materia ingresado no existe. Por consecuente no se borro nada.', 16, 1);
+            ROLLBACK TRANSACTION;
+            RETURN; 
+        END
+
+        DECLARE @IdEstadoInscripcionCancelada INT;
+        DECLARE @IdEstadoPagoCancelada INT;
+        DECLARE @IdInscripcion INT;
+        DECLARE @IdCurso INT;
+        
+        -- ID ESTADO INSCRIPCION
+        SELECT @IdEstadoInscripcionCancelada = IdEstado
+        FROM dbo.Estado
+        WHERE Tipo = 'INSCRIPCION' and Situacion = 'CANCELADA'
+
+        -- ID ESTADO PAGO
+        SELECT @IdEstadoPagoCancelada = IdEstado
+        FROM dbo.Estado
+        WHERE Tipo = 'PAGO' and Situacion = 'CANCELADO'
+
+        -- Obtengo el Id del CURSO
+        SELECT @IdCurso = IdCurso
+        FROM dbo.Curso
+        WHERE Codigo = @Codigo
+
+        -- Obtengo el Id de la Inscripcion
+        SELECT @IdInscripcion = IdInscripcion
+        FROM dbo.Inscripcion
+        WHERE IdUsuario = @IdUsuario and IdCurso = @IdCurso
+
+        IF @IdInscripcion IS NULL
+        BEGIN
+            RAISERROR('No se encontrÃ³ una inscripciÃ³n para ese usuario y cÃ³digo de curso. No se cancelÃ³ nada.', 16, 1);
+            ROLLBACK TRANSACTION;
+            RETURN; 
+        END
+
+        UPDATE dbo.Inscripcion
+        SET IdEstado = @IdEstadoInscripcionCancelada,
+        Bloqueado = 1,
+        Observaciones = @Motivo,
+        FechaFinAcceso = GETDATE()
+        WHERE IdInscripcion = @IdInscripcion
+
+        UPDATE dbo.Pago
+        SET IdEstado = @IdEstadoPagoCancelada
+        WHERE IdInscripcion = @IdInscripcion
+
+        DELETE FROM dbo.Progreso
+        WHERE IdUsuario = @IdUsuario and IdCurso = @IdCurso
+
+        DELETE FROM dbo.Evaluacion
+        WHERE IdUsuario = @IdUsuario and IdClase in (
+            SELECT cl.IdClase 
+            FROM dbo.Clase AS cl
+            INNER JOIN dbo.Modulo AS mod ON cl.IdModulo = mod.IdModulo
+            WHERE mod.IdCurso = @IdCurso)
+
+        COMMIT TRANSACTION
+    END TRY
+    BEGIN CATCH
+        ROLLBACK TRANSACTION
+        RAISERROR ('Error en SP_CANCELARINSCRIPCION',16,1);
+    END CATCH
+END
 GO

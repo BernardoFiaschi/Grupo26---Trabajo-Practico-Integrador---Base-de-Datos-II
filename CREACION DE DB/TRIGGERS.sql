@@ -62,3 +62,42 @@ BEGIN
       AND i.IdEstado <> @IdEstadoCursoAprobado;
 END;
 GO
+
+CREATE TRIGGER TR_PAGO_APROBADO ON dbo.Pago
+AFTER UPDATE
+AS
+BEGIN
+    BEGIN TRY
+        BEGIN TRANSACTION
+
+        DECLARE @IdEstadoPago INT;
+        DECLARE @IdEstadoInscripcion INT;
+
+        SELECT @IdEstadoPago = IdEstado
+        FROM dbo.Estado
+        WHERE Tipo = 'PAGO' and Situacion = 'APROBADO'
+
+        SELECT @IdEstadoInscripcion = IdEstado
+        FROM dbo.Estado
+        WHERE Tipo = 'INSCRIPCION' and Situacion = 'ACTIVA'
+
+        UPDATE ins
+        SET ins.Bloqueado = 0,
+            ins.IdEstado = @IdEstadoInscripcion,
+            ins.FechaFinAcceso = DATEADD(day, 365, GETDATE())
+        FROM dbo.Inscripcion as ins
+        INNER JOIN INSERTED AS i ON ins.IdInscripcion = i.IdInscripcion        
+
+        INSERT INTO dbo.Progreso (IdUsuario, IdCurso, Porcentaje, Estado, UltimaClaseVista, FechaUltimaActividad, FechaFinalizacion)
+        SELECT ins.IdUsuario, ins.IdCurso, 0, 'Iniciado' , null, GETDATE(), GETDATE()
+        FROM dbo.Inscripcion as ins
+        INNER JOIN INSERTED AS i ON ins.IdInscripcion = i.IdInscripcion
+
+        COMMIT TRANSACTION
+    END TRY
+    BEGIN CATCH
+        ROLLBACK TRANSACTION
+        RAISERROR ('Error en TR_PAGO_APROBADO',16,1);
+    END CATCH
+END
+GO
